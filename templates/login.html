@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lab Manager | Login</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body {
+            background-color: #f8f9fa; /* Cinza bem clarinho */
+            height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .card-login {
+            width: 100%;
+            max-width: 400px;
+            border: none;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.05);
+        }
+        .brand-logo {
+            font-weight: bold;
+            color: #0d6efd; /* Azul Bootstrap */
+            text-align: center;
+            margin-bottom: 20px;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="card card-login p-4">
+        <div class="card-body">
+            <h2 class="brand-logo">🧬 Lab Manager</h2>
+            <h5 class="text-center text-muted mb-4">Acesso ao Sistema</h5>
+
+            <form method="POST">
+                <div class="mb-3">
+                    <label for="username" class="form-label">Usuário</label>
+                    <input type="text" class="form-control" id="username" name="username" placeholder="ex: erik.rodrigues" required>
+                </div>
+
+                <div class="mb-3">
+                    <label for="password" class="form-label">Senha</label>
+                    <input type="password" class="form-control" id="password" name="password" placeholder="Sua senha secreta" required>
+                </div>
+
+                <div class="d-grid gap-2">
+                    <button type="submit" class="btn btn-primary btn-lg">Entrar</button>
+                </div>
+            </form>
+
+            {% if mensagem %}
+                <div class="alert alert-danger mt-3 text-center" role="alert">
+                    {{ mensagem }}
+                </div>
+            {% endif %}
+        </div>
+        <div class="card-footer text-center bg-white border-0 text-muted" style="font-size: 0.8rem;">
+            Apenas pessoal autorizado.
+        </div>
+    </div>
+
+</body>
+</html>

@@ -1,0 +1,410 @@
+{% extends "layout.html" %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb mb-0">
+            <li class="breadcrumb-item"><a href="/experiments">Experimentos</a></li>
+            <li class="breadcrumb-item active">{{ exp.title }}</li>
+        </ol>
+    </nav>
+    <div>
+        <button class="btn btn-outline-secondary me-2" data-bs-toggle="modal" data-bs-target="#editarModal">
+            <i class="bi bi-gear"></i> Config
+        </button>
+        <a href="/experiments/delete/{{ exp.id }}" class="btn btn-outline-danger" onclick="return confirm('ATENÇÃO: Apagar este experimento excluirá TODOS os dados, tarefas e arquivos vinculados. Continuar?')">
+            <i class="bi bi-trash"></i>
+        </a>
+    </div>
+</div>
+
+<h2 class="mb-3">
+    {{ exp.title }} 
+    <span class="badge rounded-pill fs-6 align-middle ms-2
+        {% if exp.status == 'planejamento' %}bg-info{% endif %}
+        {% if exp.status == 'em_andamento' %}bg-warning{% endif %}
+        {% if exp.status == 'concluido' %}bg-success{% endif %}
+        {% if exp.status == 'cancelado' %}bg-danger{% endif %}">
+        {{ exp.status|upper }}
+    </span>
+</h2>
+
+<ul class="nav nav-tabs mb-4" id="myTab" role="tablist">
+    <li class="nav-item">
+        <button class="nav-link active" id="overview-tab" data-bs-toggle="tab" data-bs-target="#overview" type="button">📌 Visão Geral</button>
+    </li>
+    <li class="nav-item">
+        <button class="nav-link" id="design-tab" data-bs-toggle="tab" data-bs-target="#design" type="button">📐 Delineamento</button>
+    </li>
+    <li class="nav-item">
+        <button class="nav-link" id="tasks-tab" data-bs-toggle="tab" data-bs-target="#tasks" type="button">✅ Tarefas</button>
+    </li>
+    <li class="nav-item">
+        <button class="nav-link" id="data-tab" data-bs-toggle="tab" data-bs-target="#data" type="button">📊 Dados e Coleta</button>
+    </li>
+</ul>
+
+<div class="tab-content" id="myTabContent">
+
+    <div class="tab-pane fade show active" id="overview">
+        <div class="row">
+            <div class="col-md-8">
+                <div class="card mb-4 shadow-sm border-0">
+                    <div class="card-body">
+                        <p class="text-muted">{{ exp.description }}</p>
+                        <hr>
+                        <div class="row mt-3 text-muted small text-uppercase">
+                            <div class="col-md-4"><strong>Meio:</strong> <span class="text-dark">{{ exp.culture_media or '--' }}</span></div>
+                            <div class="col-md-4"><strong>Temp:</strong> <span class="text-dark">{{ exp.temperature or '--' }}</span></div>
+                            <div class="col-md-4"><strong>Luz:</strong> <span class="text-dark">{{ exp.photoperiod or '--' }}</span></div>
+                        </div>
+                        <div class="mt-3">
+                            <small class="text-uppercase text-muted">Linhagens:</small><br>
+                            <code class="text-dark">{{ exp.strain_info or 'Nenhuma registrada' }}</code>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="col-md-4">
+                <div class="card shadow-sm h-100 border-0">
+                    <div class="card-header bg-white d-flex justify-content-between align-items-center">
+                        <span class="fw-bold"><i class="bi bi-paperclip"></i> Referências</span>
+                        <button class="btn btn-sm btn-dark" data-bs-toggle="modal" data-bs-target="#uploadModal"><i class="bi bi-upload"></i></button>
+                    </div>
+                    <ul class="list-group list-group-flush">
+                        {% for art in articles %}
+                        <li class="list-group-item d-flex justify-content-between align-items-center">
+                            <a href="{{ url_for('static', filename='uploads/' + art.filename) }}" target="_blank" class="text-truncate text-decoration-none" style="max-width: 180px;">
+                                <i class="bi bi-file-earmark-pdf text-danger"></i> {{ art.title }}
+                            </a>
+                            <a href="/articles/delete/{{ art.id }}" class="text-danger" onclick="return confirm('Apagar arquivo?')"><i class="bi bi-x"></i></a>
+                        </li>
+                        {% else %}
+                        <li class="list-group-item text-center text-muted py-4 small">Sem arquivos.</li>
+                        {% endfor %}
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="tab-pane fade" id="design">
+        <div class="row g-4">
+            
+            <div class="col-md-4">
+                <div class="card shadow-sm h-100 border-0">
+                    <div class="card-header bg-white d-flex justify-content-between">
+                        <h6 class="mb-0 text-primary fw-bold">1. Tratamentos</h6>
+                        <button class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#addTreatmentModal">+</button>
+                    </div>
+                    <ul class="list-group list-group-flush small">
+                        {% for t in treatments %}
+                        <li class="list-group-item">
+                            <div class="fw-bold">{{ t.name }}</div>
+                            <div class="text-muted">{{ t.description }}</div>
+                        </li>
+                        {% else %}
+                        <li class="list-group-item text-center py-3 text-muted">Nenhum definido.</li>
+                        {% endfor %}
+                    </ul>
+                    <div class="card-body bg-light mt-auto border-top">
+                        <label class="small fw-bold mb-1">Gerar Réplicas:</label>
+                        <form action="/experiment/{{ exp.id }}/generate_replicas" method="POST" class="d-flex gap-1">
+                            <select name="treatment_id" class="form-select form-select-sm" required>
+                                <option value="" disabled selected>Selecione...</option>
+                                {% for t in treatments %}<option value="{{ t.id }}">{{ t.name }}</option>{% endfor %}
+                            </select>
+                            <input type="number" name="num_replicas" class="form-control form-control-sm" value="5" style="width: 50px;">
+                            <button class="btn btn-sm btn-warning">Gerar</button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-md-4">
+                <div class="card shadow-sm h-100 border-0">
+                    <div class="card-header bg-white d-flex justify-content-between">
+                        <h6 class="mb-0 text-info fw-bold">2. Variáveis</h6>
+                        <button class="btn btn-sm btn-outline-info" data-bs-toggle="modal" data-bs-target="#addVariableModal">+</button>
+                    </div>
+                    <ul class="list-group list-group-flush small">
+                        {% for v in variables %}
+                        <li class="list-group-item d-flex justify-content-between align-items-center">
+                            <span>{{ v.name }} <span class="badge bg-light text-dark border">{{ v.unit }}</span></span>
+                            <a href="/variable/delete/{{ v.id }}" class="text-danger" onclick="return confirm('CUIDADO: Apagar esta variável excluirá todos os dados coletados nela. Confirmar?')">
+                                <i class="bi bi-trash"></i>
+                            </a>
+                        </li>
+                        {% else %}
+                        <li class="list-group-item text-center py-3 text-muted">Nenhuma variável.</li>
+                        {% endfor %}
+                    </ul>
+                </div>
+            </div>
+
+            <div class="col-md-4">
+                <div class="card shadow-sm h-100 border-0 border-start border-4 border-primary">
+                    <div class="card-header bg-primary text-white d-flex justify-content-between">
+                        <h6 class="mb-0 fw-bold"><i class="bi bi-calculator"></i> 3. Fórmulas</h6>
+                        <button class="btn btn-sm btn-light text-primary" data-bs-toggle="modal" data-bs-target="#addFormulaModal">+</button>
+                    </div>
+                    <div class="card-body p-2">
+                        <ul class="list-group list-group-flush small">
+                            {% for f in formulas %}
+                            <li class="list-group-item bg-light border mb-2 rounded">
+                                <div class="d-flex justify-content-between align-items-center mb-1">
+                                    <strong class="text-primary">{{ f.name }}</strong>
+                                    <a href="/formula/delete/{{ f.id }}" class="text-danger"><i class="bi bi-x"></i></a>
+                                </div>
+                                <div class="text-muted font-monospace" style="font-size: 0.8em; word-break: break-all;">
+                                    <strong>{{ f.target_name }}</strong> = {{ f.expression }}
+                                </div>
+                            </li>
+                            {% else %}
+                            <li class="text-center text-muted py-3">Crie fórmulas para cálculo automático na tabela.</li>
+                            {% endfor %}
+                        </ul>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <div class="tab-pane fade" id="tasks">
+        <div class="d-flex justify-content-end mb-3">
+            <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#newTaskComplexModal">
+                <i class="bi bi-plus-lg"></i> Nova Tarefa
+            </button>
+        </div>
+        <div class="list-group shadow-sm">
+            {% for task in tasks %}
+            <div class="list-group-item d-flex justify-content-between align-items-start p-3">
+                <div class="d-flex gap-3 w-100">
+                    <a href="/task/toggle/{{ task.id }}" class="btn btn-sm {% if task.status == 'concluido' %}btn-success{% else %}btn-outline-secondary{% endif %} rounded-circle d-flex align-items-center justify-content-center" style="width: 28px; height: 28px;">
+                        <i class="bi bi-check-lg"></i>
+                    </a>
+                    <div class="w-100">
+                        <div class="d-flex justify-content-between">
+                            <h5 class="mb-1 {% if task.status == 'concluido' %}text-decoration-line-through text-muted{% endif %}">{{ task.title }}</h5>
+                            <a href="/task/delete/{{ task.id }}" class="text-danger opacity-50 hover-opacity-100"><i class="bi bi-trash"></i></a>
+                        </div>
+                        <div class="mb-2">
+                            <span class="badge {% if task.priority=='alta' %}bg-danger{% else %}bg-secondary{% endif %}">{{ task.priority }}</span>
+                            {% if task.due_date %}
+                            <small class="text-danger fw-bold ms-2"><i class="bi bi-clock"></i> {{ task.due_date }}</small>
+                            {% endif %}
+                        </div>
+                        {% if task.sop_instructions %}
+                        <div class="alert alert-light border py-2 px-3 mb-0 small text-dark">
+                            <strong><i class="bi bi-book"></i> Instruções:</strong> {{ task.sop_instructions }}
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+            {% else %}
+            <div class="text-center py-5 text-muted border rounded">Sem tarefas.</div>
+            {% endfor %}
+        </div>
+    </div>
+
+    <div class="tab-pane fade" id="data">
+        <form action="/experiment/{{ exp.id }}/save_data" method="POST">
+            <div class="d-flex justify-content-between align-items-center mb-2 mt-2">
+                <div class="small text-muted"><i class="bi bi-lightning-charge-fill text-warning"></i> Fórmulas são aplicadas ao digitar.</div>
+                <a href="/experiment/{{ exp.id }}/export_csv" class="btn btn-outline-primary fw-bold shadow-sm me-2">
+    <i class="bi bi-file-earmark-spreadsheet"></i> Baixar CSV (R)
+</a>
+                <button type="submit" class="btn btn-success fw-bold shadow-sm"><i class="bi bi-save"></i> SALVAR DADOS</button>
+            </div>
+            
+            <div class="table-responsive bg-white shadow-sm border">
+                <table class="table table-bordered table-hover mb-0" id="tabelaDados">
+                    <thead class="table-dark text-center align-middle">
+                        <tr>
+                            <th style="width: 120px;">Réplica</th>
+                            <th style="width: 100px;">Trat.</th>
+                            {% for v in variables %}
+                            <th style="min-width: 130px;" data-var-name="{{ v.name }}">
+                                {{ v.name }}<br><small class="text-white-50 fw-normal">({{ v.unit }})</small>
+                            </th>
+                            {% endfor %}
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for r in replicas %}
+                        <tr>
+                            <td class="fw-bold bg-light align-middle">{{ r.name }}</td>
+                            <td class="text-center align-middle"><span class="badge bg-secondary">{{ r.treatment_name }}</span></td>
+                            {% for v in variables %}
+                            <td class="p-0">
+                                {% set valor_atual = matrix.get(r.id, {}).get(v.id, '') %}
+                                <input type="number" step="any" 
+                                       name="valor_{{ r.id }}_{{ v.id }}"
+                                       class="form-control border-0 text-center input-dado py-2"
+                                       value="{{ valor_atual }}"
+                                       data-col-name="{{ v.name }}"
+                                       oninput="recalcularTudo(this)">
+                            </td>
+                            {% endfor %}
+                        </tr>
+                        {% else %}
+                        <tr><td colspan="10" class="text-center py-5 text-muted">Vá para a aba 'Delineamento' para gerar réplicas e variáveis.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="modal fade" id="editarModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header bg-light"><h5 class="modal-title">Configurações</h5><button class="btn-close" data-bs-dismiss="modal"></button></div>
+            <form method="POST">
+                <input type="hidden" name="update_experiment" value="1">
+                <div class="modal-body">
+                    <div class="row g-3">
+                        <div class="col-12"><label class="fw-bold">Título</label><input type="text" name="title" class="form-control" value="{{ exp.title }}" required></div>
+                        <div class="col-12"><label class="fw-bold">Descrição</label><textarea name="description" class="form-control" rows="2">{{ exp.description }}</textarea></div>
+                    </div>
+                    <hr>
+                    <div class="row g-3">
+                        <div class="col-md-4"><label class="small">Meio</label><input type="text" name="culture_media" class="form-control form-control-sm" value="{{ exp.culture_media }}"></div>
+                        <div class="col-md-4"><label class="small">Temp</label><input type="text" name="temperature" class="form-control form-control-sm" value="{{ exp.temperature }}"></div>
+                        <div class="col-md-4"><label class="small">Luz</label><input type="text" name="photoperiod" class="form-control form-control-sm" value="{{ exp.photoperiod }}"></div>
+                        <div class="col-12"><label class="small">Linhagens</label><input type="text" name="strain_info" class="form-control form-control-sm" value="{{ exp.strain_info }}"></div>
+                    </div>
+                    <hr>
+                    <div class="row g-3">
+                        <div class="col-md-4"><label class="small">Início</label><input type="date" name="start_date" class="form-control" value="{{ exp.start_date }}"></div>
+                        <div class="col-md-4"><label class="small">Prazo</label><input type="date" name="deadline" class="form-control" value="{{ exp.deadline }}"></div>
+                        <div class="col-md-4"><label class="small">Status</label><select name="status" class="form-select"><option value="em_andamento">Em Andamento</option><option value="concluido">Concluído</option></select></div>
+                    </div>
+                </div>
+                <div class="modal-footer"><button type="submit" class="btn btn-primary">Salvar</button></div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="addTreatmentModal" tabindex="-1"><div class="modal-dialog"><div class="modal-content"><form action="/experiment/{{ exp.id }}/add_treatment" method="POST"><div class="modal-body"><input type="text" name="name" class="form-control mb-2" placeholder="Nome (Ex: Controle)" required><textarea name="description" class="form-control" placeholder="Descrição"></textarea></div><div class="modal-footer"><button class="btn btn-primary">Salvar</button></div></form></div></div></div>
+
+<div class="modal fade" id="addVariableModal" tabindex="-1"><div class="modal-dialog"><div class="modal-content"><form action="/experiment/{{ exp.id }}/add_variable" method="POST"><div class="modal-body"><input type="text" name="name" class="form-control mb-2" placeholder="Nome (Ex: Clorofila)" required><input type="text" name="unit" class="form-control" placeholder="Unidade (Ex: ug)"></div><div class="modal-footer"><button class="btn btn-primary">Salvar</button></div></form></div></div></div>
+
+<div class="modal fade" id="newTaskComplexModal" tabindex="-1"><div class="modal-dialog"><div class="modal-content"><form action="/task/add_complex/{{ exp.id }}" method="POST"><div class="modal-body"><input type="text" name="title" class="form-control mb-2" placeholder="Título" required><div class="row mb-2"><div class="col"><select name="priority" class="form-select"><option value="media">Média</option><option value="alta">Alta</option></select></div><div class="col"><input type="date" name="due_date" class="form-control"></div></div><textarea name="sop_instructions" class="form-control" placeholder="Instruções / SOP"></textarea></div><div class="modal-footer"><button class="btn btn-primary">Salvar</button></div></form></div></div></div>
+
+<div class="modal fade" id="uploadModal" tabindex="-1"><div class="modal-dialog"><div class="modal-content"><form action="/experiment/{{ exp.id }}/upload" method="POST" enctype="multipart/form-data"><div class="modal-body"><input type="file" name="file" class="form-control mb-2" accept=".pdf" required><input type="text" name="title" class="form-control" placeholder="Nome do Arquivo" required></div><div class="modal-footer"><button class="btn btn-dark">Enviar</button></div></form></div></div></div>
+
+<div class="modal fade" id="addFormulaModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white"><h5 class="modal-title">Criar Fórmula</h5><button class="btn-close btn-close-white" data-bs-dismiss="modal"></button></div>
+            <form action="/experiment/{{ exp.id }}/add_formula" method="POST">
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Nome da Fórmula</label>
+                        <input type="text" name="name" class="form-control" placeholder="Ex: Clorofila Total" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Onde salvar o resultado?</label>
+                        <select name="target_variable_id" class="form-select" required>
+                            {% for v in variables %}
+                            <option value="{{ v.id }}">{{ v.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Expressão (Use colchetes [ ] para variáveis)</label>
+                        <textarea name="expression" class="form-control" rows="3" placeholder="Ex: ([Leitura 665] - [Leitura 750]) * 14" required></textarea>
+                        <div class="form-text small">Disponíveis: {% for v in variables %}<span class="badge bg-light text-dark border me-1">[{{ v.name }}]</span> {% endfor %}</div>
+                    </div>
+                </div>
+                <div class="modal-footer"><button type="submit" class="btn btn-primary">Salvar Fórmula</button></div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+// Colocamos entre aspas simples '...' para o VS Code achar que é texto
+// E usamos JSON.parse para transformar esse texto de volta em objeto real
+var formulasData = JSON.parse('{{ formulas | tojson | safe }}');
+
+    function recalcularTudo(inputAlterado) {
+        let linha = inputAlterado.closest('tr');
+
+        // Se não houver fórmulas, para.
+        if (!formulasData || formulasData.length === 0) return;
+
+        formulasData.forEach(f => {
+            let expressao = f.expression;
+            let podeCalcular = true;
+
+            // Substitui [Nome Variavel] pelo valor do input
+            expressao = expressao.replace(/\[(.*?)\]/g, (match, nomeVariavel) => {
+                let inputVar = linha.querySelector(`input[data-col-name="${nomeVariavel}"]`);
+                if (inputVar && inputVar.value !== '') {
+                    return `(${inputVar.value})`;
+                } else {
+                    podeCalcular = false;
+                    return '0';
+                }
+            });
+
+            if (podeCalcular) {
+                try {
+                    // Executa a conta
+                    let resultado = eval(expressao);
+                    
+                    // Acha o campo de destino
+                    let inputDestino = linha.querySelector(`input[data-col-name="${f.target_name}"]`);
+                    if (inputDestino) {
+                        inputDestino.value = parseFloat(resultado).toFixed(4);
+                        // Efeito visual (flash verde)
+                        inputDestino.style.backgroundColor = "#d1e7dd";
+                        setTimeout(() => inputDestino.style.backgroundColor = "", 800);
+                    }
+                } catch (e) {
+                    console.log("Erro na fórmula:", e);
+                }
+            }
+        });
+    }
+</script>
+
+<script>
+    document.addEventListener("DOMContentLoaded", function() {
+        // 1. Ao carregar a página, verifica se há uma aba salva
+        var activeTab = localStorage.getItem('activeTab_experiment_{{ exp.id }}');
+        if (activeTab) {
+            // Se houver, clica nela automaticamente
+            var tabToActivate = document.querySelector(`#myTab button[data-bs-target="${activeTab}"]`);
+            if (tabToActivate) {
+                // Remove a classe 'active' da aba padrão (Visão Geral)
+                document.querySelectorAll('#myTab button').forEach(t => t.classList.remove('active'));
+                document.querySelectorAll('.tab-pane').forEach(p => {
+                    p.classList.remove('show', 'active');
+                });
+
+                // Ativa a aba salva
+                tabToActivate.classList.add('active'); // Aba (botão)
+                document.querySelector(activeTab).classList.add('show', 'active'); // Conteúdo
+            }
+        }
+
+        // 2. Sempre que o usuário clicar numa aba, salva o ID dela
+        var tabEl = document.querySelectorAll('button[data-bs-toggle="tab"]');
+        tabEl.forEach(function(tab) {
+            tab.addEventListener('shown.bs.tab', function (event) {
+                var targetId = event.target.getAttribute('data-bs-target'); // Ex: #design
+                localStorage.setItem('activeTab_experiment_{{ exp.id }}', targetId);
+            });
+        });
+    });
+</script>
+
+{% endblock %}

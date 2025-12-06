@@ -1,0 +1,108 @@
+{% extends "layout.html" %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2>🧪 Meus Experimentos</h2>
+    <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#novoExperimentoModal">
+        <i class="bi bi-plus-lg"></i> Novo Experimento
+    </button>
+</div>
+
+<div class="card mb-4 border-0 shadow-sm">
+    <div class="card-body">
+        <form method="GET" class="row g-3">
+            <div class="col-md-4">
+                <input type="text" name="q" class="form-control" placeholder="Buscar por título..." value="{{ request.args.get('q', '') }}">
+            </div>
+            <div class="col-md-3">
+                <select name="status" class="form-select" onchange="this.form.submit()">
+                    <option value="todos">Todos os Status</option>
+                    <option value="planejamento" {% if request.args.get('status') == 'planejamento' %}selected{% endif %}>📅 Planejamento</option>
+                    <option value="em_andamento" {% if request.args.get('status') == 'em_andamento' %}selected{% endif %}>⚙️ Em Andamento</option>
+                    <option value="concluido" {% if request.args.get('status') == 'concluido' %}selected{% endif %}>✅ Concluído</option>
+                    <option value="cancelado" {% if request.args.get('status') == 'cancelado' %}selected{% endif %}>❌ Cancelado</option>
+                </select>
+            </div>
+            <div class="col-md-2">
+                <button type="submit" class="btn btn-outline-secondary w-100">Filtrar</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="row">
+    {% for exp in experimentos %}
+    <div class="col-md-6 col-lg-4 mb-4">
+        <div class="card h-100 shadow-sm">
+            <div class="card-header d-flex justify-content-between align-items-center bg-white">
+                <span class="badge 
+                    {% if exp.status == 'planejamento' %}bg-info{% endif %}
+                    {% if exp.status == 'em_andamento' %}bg-warning{% endif %}
+                    {% if exp.status == 'concluido' %}bg-success{% endif %}
+                    {% if exp.status == 'cancelado' %}bg-danger{% endif %}">
+                    {{ exp.status|upper }}
+                </span>
+                <small class="text-muted">{{ exp.created_at[:10] }}</small>
+            </div>
+            <div class="card-body">
+                <h5 class="card-title">{{ exp.title }}</h5>
+                <p class="card-text text-muted">{{ exp.description }}</p>
+            </div>
+            <div class="card-footer bg-white border-top-0 d-flex justify-content-end">
+                <a href="/experiment/{{ exp.id }}" class="btn btn-sm btn-outline-primary me-2"><i class="bi bi-eye"></i> Detalhes</a>
+                <a href="/experiments/delete/{{ exp.id }}" class="btn btn-sm btn-outline-danger" onclick="return confirm('Tem certeza?')"><i class="bi bi-trash"></i></a>
+            </div>
+        </div>
+    </div>
+    {% else %}
+    <div class="col-12 text-center py-5">
+        <p class="text-muted">Nenhum experimento encontrado.</p>
+    </div>
+    {% endfor %}
+</div>
+
+<div class="modal fade" id="novoExperimentoModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Novo Experimento</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form method="POST">
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Título do Experimento</label>
+                        <input type="text" name="title" class="form-control" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Descrição / Objetivo</label>
+                        <textarea name="description" class="form-control" rows="3"></textarea>
+                    </div>
+                    
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Data Início</label>
+                            <input type="date" name="start_date" class="form-control">
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Prazo Estimado</label>
+                            <input type="date" name="deadline" class="form-control">
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Status Inicial</label>
+                        <select name="status" class="form-select">
+                            <option value="planejamento">Planejamento</option>
+                            <option value="em_andamento">Em Andamento</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-primary">Salvar Experimento</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
