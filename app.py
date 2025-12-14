@@ -1,12 +1,11 @@
 import csv
 import io
-from flask import Response # Importante para o download funcionar
 import os
-from flask import Flask, render_template, request, redirect, url_for, session
-from werkzeug.utils import secure_filename
 import sqlite3
 import hashlib
-import json # Importante para passar as fórmulas para o JavaScript
+import json
+from flask import Flask, render_template, request, redirect, url_for, session, Response
+from werkzeug.utils import secure_filename
 
 app = Flask(__name__)
 app.secret_key = 'segredo_super_secreto'
@@ -17,7 +16,7 @@ def get_db_connection():
     conn.row_factory = sqlite3.Row
     return conn
 
-# --- ROTAS DE LOGIN/DASHBOARD (MANTIDAS IGUAIS) ---
+# --- ROTAS DE LOGIN/DASHBOARD ---
 @app.route('/', methods=['GET', 'POST'])
 def login():
     mensagem = ''
@@ -60,7 +59,7 @@ def experiments():
     conn.close()
     return render_template('experiments.html', experimentos=experimentos)
 
-# --- DETALHES DO EXPERIMENTO (ATUALIZADO COM FÓRMULAS) ---
+# --- DETALHES DO EXPERIMENTO (ATUALIZADO) ---
 @app.route('/experiment/<int:id>', methods=['GET', 'POST'])
 def experiment_details(id):
     if 'usuario' not in session: return redirect(url_for('login'))
@@ -91,17 +90,50 @@ def experiment_details(id):
         if m['replica_id'] not in dados_matrix: dados_matrix[m['replica_id']] = {}
         dados_matrix[m['replica_id']][m['variable_id']] = m['value']
 
-    # --- NOVO: CARREGAR FÓRMULAS ---
-    # Precisamos do nome da variável alvo para o JS saber onde colocar o resultado
+    # Carregar Fórmulas do Experimento
     formulas_db = conn.execute('''
         SELECT f.*, v.name as target_name 
         FROM formulas f 
         JOIN variables v ON f.target_variable_id = v.id 
         WHERE f.experiment_id = ?
     ''', (id,)).fetchall()
-    
-    # Converte para lista de dicionários para passar para o JavaScript via JSON
     formulas_list = [dict(f) for f in formulas_db]
+
+    # --- NOVO: Carregar Biblioteca Global ---
+    biblioteca_formulas = conn.execute('SELECT * FROM global_formulas ORDER BY name').fetchall()
+
+    # --- CALCULAR ESTATÍSTICAS (Necessário para evitar erro no template) ---
+    stats = {}
+    temp_data = {} 
+    
+    # Organiza para cálculo de média
+    for r in replicas:
+        t_name = r['treatment_name']
+        r_id = r['id']
+        if r_id in dados_matrix:
+            for v in variaveis:
+                v_id = v['id']
+                if v_id in dados_matrix[r_id]:
+                    val = dados_matrix[r_id][v_id]
+                    try:
+                        val = float(val)
+                        if v_id not in temp_data: temp_data[v_id] = {}
+                        if t_name not in temp_data[v_id]: temp_data[v_id][t_name] = []
+                        temp_data[v_id][t_name].append(val)
+                    except: pass
+
+    # Calcula as médias
+    for v in variaveis:
+        v_id = v['id']
+        if v_id in temp_data:
+            labels = []
+            medias = []
+            for t_name, valores in temp_data[v_id].items():
+                if len(valores) > 0:
+                    media = sum(valores) / len(valores)
+                    labels.append(t_name)
+                    medias.append(round(media, 4))
+            stats[v_id] = {'name': v['name'], 'labels': labels, 'data': medias}
 
     conn.close()
     
@@ -109,7 +141,8 @@ def experiment_details(id):
                            exp=exp, tasks=tarefas, articles=artigos,
                            treatments=tratamentos, variables=variaveis, 
                            replicas=replicas, matrix=dados_matrix,
-                           formulas=formulas_list) # Passamos as fórmulas
+                           formulas=formulas_list, stats=stats,
+                           global_formulas=biblioteca_formulas) # Passando a biblioteca universal
 
 # --- ROTAS CIENTÍFICAS ---
 
@@ -127,46 +160,47 @@ def add_variable(id):
     conn.commit(); conn.close()
     return redirect(url_for('experiment_details', id=id))
 
-# --- NOVO: DELETAR VARIÁVEL ---
 @app.route('/variable/delete/<int:var_id>')
 def delete_variable(var_id):
     if 'usuario' not in session: return redirect(url_for('login'))
     conn = get_db_connection()
-    
-    # 1. Descobrir ID do experimento para voltar depois
     var = conn.execute('SELECT experiment_id FROM variables WHERE id = ?', (var_id,)).fetchone()
     if var:
         exp_id = var['experiment_id']
-        # 2. Apagar medições dessa variável (limpeza)
         conn.execute('DELETE FROM measurements WHERE variable_id = ?', (var_id,))
-        # 3. Apagar fórmulas onde essa variável é o ALVO
         conn.execute('DELETE FROM formulas WHERE target_variable_id = ?', (var_id,))
-        # 4. Apagar a variável
         conn.execute('DELETE FROM variables WHERE id = ?', (var_id,))
         conn.commit()
         conn.close()
         return redirect(url_for('experiment_details', id=exp_id))
-    
     conn.close()
     return redirect(url_for('dashboard'))
 
-# --- NOVO: ADICIONAR FÓRMULA ---
+# --- NOVO: ADICIONAR FÓRMULA (Local + Universal) ---
 @app.route('/experiment/<int:id>/add_formula', methods=['POST'])
 def add_formula(id):
     if 'usuario' not in session: return redirect(url_for('login'))
     conn = get_db_connection()
     
     target_id = request.form['target_variable_id']
-    expression = request.form['expression'] # Ex: ([Leitura 665] - [Leitura 750]) * 10
+    expression = request.form['expression']
     name = request.form['name']
     
+    # 1. Salva no experimento atual
     conn.execute('INSERT INTO formulas (experiment_id, name, target_variable_id, expression) VALUES (?, ?, ?, ?)',
                  (id, name, target_id, expression))
+    
+    # 2. Salva na Biblioteca Universal (Ignora se já existir nome igual)
+    try:
+        conn.execute('INSERT OR IGNORE INTO global_formulas (name, expression) VALUES (?, ?)', 
+                     (name, expression))
+    except:
+        pass
+
     conn.commit()
     conn.close()
     return redirect(url_for('experiment_details', id=id))
 
-# --- NOVO: DELETAR FÓRMULA ---
 @app.route('/formula/delete/<int:formula_id>')
 def delete_formula(formula_id):
     if 'usuario' not in session: return redirect(url_for('login'))
@@ -180,6 +214,15 @@ def delete_formula(formula_id):
     conn.close()
     return redirect(url_for('dashboard'))
 
+# --- NOVO: DELETAR FÓRMULA GLOBAL ---
+@app.route('/global_formula/delete/<int:f_id>')
+def delete_global_formula(f_id):
+    if 'usuario' not in session: return redirect(url_for('login'))
+    conn = get_db_connection()
+    conn.execute('DELETE FROM global_formulas WHERE id = ?', (f_id,))
+    conn.commit()
+    conn.close()
+    return redirect(url_for('dashboard')) # Redireciona para dashboard por simplificação
 
 @app.route('/experiment/<int:id>/generate_replicas', methods=['POST'])
 def generate_replicas(id):
@@ -206,7 +249,6 @@ def save_data(id):
     return redirect(url_for('experiment_details', id=id))
 
 # --- TAREFAS/ARQUIVOS/DELETE ---
-# (Mantive estas rotas compactadas pois não mudaram, mas estão aqui completas no código original)
 @app.route('/task/add_complex/<int:experiment_id>', methods=['POST'])
 def add_task_complex(experiment_id):
     conn = get_db_connection()
@@ -250,20 +292,18 @@ def delete_article(id):
 @app.route('/experiments/delete/<int:id>')
 def delete_experiment(id):
     conn = get_db_connection()
-    for table in ['tasks', 'articles', 'treatments', 'variables', 'replicas', 'formulas']: # Adicionado formulas no delete
+    for table in ['tasks', 'articles', 'treatments', 'variables', 'replicas', 'formulas']: 
         conn.execute(f'DELETE FROM {table} WHERE experiment_id = ?', (id,))
     conn.execute('DELETE FROM experiments WHERE id = ?', (id,))
     conn.commit(); conn.close()
     return redirect(url_for('experiments'))
 
-
-    # --- ROTA DE EXPORTAÇÃO PARA CSV (NOVO) ---
+# --- ROTA DE EXPORTAÇÃO PARA CSV ---
 @app.route('/experiment/<int:id>/export_csv')
 def export_csv(id):
     if 'usuario' not in session: return redirect(url_for('login'))
     conn = get_db_connection()
     
-    # 1. Recuperar definições do experimento
     experimento = conn.execute('SELECT title FROM experiments WHERE id = ?', (id,)).fetchone()
     variaveis = conn.execute('SELECT * FROM variables WHERE experiment_id = ? ORDER BY id', (id,)).fetchall()
     replicas = conn.execute('''
@@ -274,8 +314,6 @@ def export_csv(id):
         ORDER BY r.name
     ''', (id,)).fetchall()
     
-    # 2. Recuperar os dados (Medições)
-    # Formato: dados[replica_id][variable_id] = valor
     medicoes = conn.execute('''
         SELECT replica_id, variable_id, value 
         FROM measurements 
@@ -289,34 +327,24 @@ def export_csv(id):
     
     conn.close()
 
-    # 3. Construir o CSV na memória
     output = io.StringIO()
     writer = csv.writer(output)
     
-    # Cabeçalho: ID, Tratamento, [Nome Var 1], [Nome Var 2]...
     header = ['Codigo_Replica', 'Tratamento']
-    var_ids = [] # Guardar a ordem dos IDs para preencher as linhas corretamente
+    var_ids = []
     for v in variaveis:
         header.append(v['name'])
         var_ids.append(v['id'])
     
     writer.writerow(header)
     
-    # Linhas de Dados
     for r in replicas:
         row = [r['name'], r['treatment_name']]
-        
-        # Preenche as colunas das variáveis
         for vid in var_ids:
-            # Pega o valor ou deixa vazio se não existir
             valor = data_map.get(r['id'], {}).get(vid, '')
-            # Troca ponto por vírgula se preferires Excel PT-BR, ou mantém ponto para R
-            # Para o R, manter o PONTO é melhor.
             row.append(valor)
-            
         writer.writerow(row)
     
-    # 4. Preparar o arquivo para download
     output.seek(0)
     return Response(
         output,
